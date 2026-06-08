@@ -150,14 +150,103 @@
         {{ data.head | safe }}
     </div>
 
+    <!-- 数据清洗表单 -->
+    <div class="card">
+        <h5>数据清洗</h5>
+        {% if message %}
+        <div class="alert alert-success">{{ message }}</div>
+        {% endif %}
+
+        <form method="post" action="/clean">
+            <div class="row mb-2">
+                <div class="col-md-4">
+                    <label class="form-label">缺失值处理策略</label>
+                    <select name="missing_strategy" class="form-select">
+                        <option value="auto">自动（数值均值/其他众数）</option>
+                        <option value="drop">删除含缺失行</option>
+                        <option value="mean">均值填充（数值）</option>
+                        <option value="median">中位数填充（数值）</option>
+                        <option value="mode">众数填充</option>
+                        <option value="ffill">向前填充</option>
+                        <option value="bfill">向后填充</option>
+                        <option value="constant">常数填充</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">常数填充值（可选）</label>
+                    <input name="missing_fill_value" class="form-control" placeholder="例如: 0 or unknown">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">是否删除异常值</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="remove_outliers" name="remove_outliers">
+                        <label class="form-check-label" for="remove_outliers">移除检测到的异常行</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-2">
+                <div class="col-md-3">
+                    <label class="form-label">异常值检测方法</label>
+                    <select name="outlier_method" class="form-select">
+                        <option value="iqr">IQR（默认）</option>
+                        <option value="zscore">Z-Score</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Z 阈值</label>
+                    <input name="z_thresh" class="form-control" placeholder="3.0">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">IQR k 值</label>
+                    <input name="iqr_k" class="form-control" placeholder="1.5">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">选择用于异常检测的列</label>
+                    <select name="outlier_columns" class="form-select" multiple>
+                        {% for col in data.columns %}
+                        <option value="{{ col }}">{{ col }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="text-end">
+                <button class="btn btn-primary">应用清洗</button>
+            </div>
+        </form>
+    </div>
+
     <!-- 下载 -->
     <div class="card text-center">
         <a class="btn btn-success px-4" href="/download/{{ filename }}">
             下载数据文件
         </a>
+        {% if cleaned_filename %}
+        <a class="btn btn-primary px-4 ms-2" href="/download/{{ cleaned_filename }}">
+            下载清洗后的文件
+        </a>
+        {% endif %}
     </div>
 
 </div>
+
+<!-- 清洗报告（若有） -->
+{% if missing_summary_html or outliers %}
+<div class="content">
+    <div class="card">
+        <h5>清洗报告</h5>
+        {% if missing_summary_html %}
+        <h6>缺失值统计</h6>
+        <div>
+            {{ missing_summary_html | safe }}
+        </div>
+        {% endif %}
+
+        {# 异常值检测部分已移除 #}
+    </div>
+</div>
+{% endif %}
 
 </body>
 </html>
