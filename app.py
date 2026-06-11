@@ -15,10 +15,11 @@ from modules.upload import (
     load_dataset_by_id
 )
 from modules import clean as clean_module
-from modules.database import init_db, save_dataset_record, get_all_datasets
+from modules import analyze as analyze_module
 from modules.visualize import create_chart
 import numpy as np
 import pandas as pd
+from modules.database import init_db, save_dataset_record, get_all_datasets
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here-change-in-production'
 # 上传文件目录
@@ -271,6 +272,111 @@ def visualize():
             filename=session.get('last_filename', ''),
             error=f"绘图失败: {e}"
         )
+
+
+@app.route('/analyze', methods=['GET', 'POST'])
+def analyze_route():
+    df = get_current_dataframe()
+    # Allow viewing the analyze page even if no data is loaded (GET);
+    # require data only for POST analysis execution.
+    if df is None:
+        numeric_cols = []
+        all_cols = []
+    else:
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        all_cols = df.columns.tolist()
+
+    if request.method == 'GET':
+        return render_template('analyze.html', numeric_cols=numeric_cols, all_cols=all_cols)
+
+    # POST: 执行分析
+    if df is None:
+        return "当前无加载数据", 400
+
+    mode = request.form.get('mode', 'auto')
+    features = request.form.getlist('features') or []
+    target = request.form.get('target') or ''
+    # optional k range for clustering
+    kmin = request.form.get('kmin')
+    kmax = request.form.get('kmax')
+    k_range = None
+    # 参数校验（不合理时直接返回提示）
+    error_msg = None
+
+    # features 如果为空则使用所有数值列
+    if not features:
+        features = numeric_cols.copy()
+
+    # 校验 features 是否存在且为数值列
+    invalid_feats = [f for f in features if f not in numeric_cols]
+    if invalid_feats:
+        error_msg = f"所选特征列包含非数值或不存在的列：{', '.join(invalid_feats)}。请只选择数值列。"
+
+    # 校验 target 是否存在
+    if target:
+        if target not in all_cols:
+            error_msg = f"目标列 `{target}` 不存在，请选择有效的目标列。"
+
+    # 解析并校验 k 范围
+    if kmin or kmax:
+        try:
+            kmin_i = int(kmin) if kmin else None
+            kmax_i = int(kmax) if kmax else None
+            if kmin_i is None or kmax_i is None:
+                error_msg = "请同时填写 K 范围的最小值和最大值，或都留空。"
+            else:
+                if kmin_i < 2 or kmax_i < 2:
+                    error_msg = "K 值必须 >= 2。"
+                elif kmin_i > kmax_i:
+                    error_msg = "K 范围不合法：最小值不能大于最大值。"
+                elif (kmax_i - kmin_i) > 20:
+                    error_msg = "K 范围跨度过大，请缩小范围（<=20）。"
+                else:
+                    k_range = (kmin_i, kmax_i)
+        except ValueError:
+            error_msg = "K 范围必须为整数。"
+
+    # 如果有错误，直接显示提示，不执行分析
+    if error_msg:
+        return render_template('analyze.html', numeric_cols=numeric_cols, all_cols=all_cols, error=error_msg, mode=mode)
+
+    # 进一步针对 classification/regression 的合理性校验
+    if mode in ('classification', 'regression'):
+        if not target:
+            return render_template('analyze.html', numeric_cols=numeric_cols, all_cols=all_cols, error='分类/回归模式需要选择目标列（target）。', mode=mode)
+        # 若 features 中包含 target，则去重
+        features_checked = [f for f in features if f != target]
+        # 检查所选特征与目标的数据量
+        try:
+            sample_df = df[features_checked + [target]].dropna()
+        except Exception:
+            return render_template('analyze.html', numeric_cols=numeric_cols, all_cols=all_cols, error='所选特征或目标列不存在于数据中。', mode=mode)
+
+        if sample_df.shape[0] < 10:
+            return render_template('analyze.html', numeric_cols=numeric_cols, all_cols=all_cols, error='有效样本不足（<10），无法进行训练，请选择更多特征或更大数据集。', mode=mode)
+
+        if mode == 'classification':
+            # 至少有 2 个类别
+            if sample_df[target].nunique() < 2:
+                return render_template('analyze.html', numeric_cols=numeric_cols, all_cols=all_cols, error='目标列类别数少于 2，无法进行分类。', mode=mode)
+        # 替换 features 为处理后的特征列表，避免后续重复
+        features = features_checked
+
+    analysis_kwargs = {}
+    if features:
+        analysis_kwargs['features'] = features
+    if target:
+        analysis_kwargs['target'] = target
+    if k_range:
+        analysis_kwargs['k_range'] = k_range
+
+    try:
+        result = analyze_module.run_analysis(df, mode=mode, **analysis_kwargs)
+    except Exception as e:
+        return f"分析失败: {e}", 500
+
+    return render_template('analyze.html', numeric_cols=numeric_cols, all_cols=all_cols, result=result, mode=mode)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
