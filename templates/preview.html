@@ -217,6 +217,69 @@
         </form>
     </div>
 
+    <!-- 数据可视化 -->
+    <div class="card">
+        <h5>数据可视化</h5>
+
+        {% if error %}
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            {{ error }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endif %}
+
+        <form method="post" action="/visualize">
+            <div class="row">
+                <div class="col-md-4">
+                    <label class="form-label">X轴字段</label>
+                    <select class="form-select" name="x">
+                        {% for col in data.columns %}
+                        <option value="{{ col }}">{{ col }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Y轴字段</label>
+                    <select class="form-select" name="y">
+                        {% for col in data.columns %}
+                        <option value="{{ col }}">{{ col }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">图表类型</label>
+                    <select class="form-select" name="chart_type">
+                        <option value="bar">柱状图</option>
+                        <option value="line">折线图</option>
+                        <option value="pie">饼图</option>
+                        <option value="scatter">散点图</option>
+                        <option value="box">箱线图</option>
+                    </select>
+                </div>
+            </div>
+            <div class="text-end mt-3">
+                <button class="btn btn-primary">生成图表</button>
+            </div>
+        </form>
+    </div>
+    {% if chart_path %}
+
+    <div class="card">
+
+        <h5>图表结果</h5>
+
+        <div class="text-center">
+
+            <img
+                src="{{ url_for('static', filename=chart_path) }}"
+                class="img-fluid"
+                alt="生成的图表">
+
+        </div>
+
+    </div>
+
+    {% endif %}
     <!-- 下载 -->
     <div class="card text-center">
         <a class="btn btn-success px-4" href="/download/{{ filename }}">

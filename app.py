@@ -16,6 +16,9 @@ from modules.upload import (
 )
 from modules import clean as clean_module
 from modules.database import init_db, save_dataset_record, get_all_datasets
+from modules.visualize import create_chart
+import numpy as np
+import pandas as pd
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here-change-in-production'
 # 上传文件目录
@@ -163,6 +166,111 @@ def clean_data_route():
         cleaned_filename=cleaned_filename,
         missing_summary_html=missing_html,
     )
+
+@app.route('/visualize', methods=['POST'])
+def visualize():
+    df = get_current_dataframe()
+    if df is None:
+        return "当前无数据", 400
+
+    x = request.form.get("x")
+    y = request.form.get("y")
+    chart_type = request.form.get("chart_type")
+
+    # ---------- 数据校验 ----------
+    if x not in df.columns or y not in df.columns:
+        error_msg = "选择的字段不存在"
+    else:
+        x_is_num = pd.api.types.is_numeric_dtype(df[x])
+        y_is_num = pd.api.types.is_numeric_dtype(df[y])
+
+        if chart_type == "pie":
+            if not y_is_num:
+                error_msg = "饼图的“值”字段必须是数值列（例如销售额、数量）"
+            elif df[x].nunique() > 50:
+                error_msg = "饼图的分类过多（超过50类），请选择类别较少的字段作为“名称”"
+            else:
+                error_msg = None
+
+        elif chart_type == "box":
+            if not y_is_num:
+                error_msg = "箱线图的“值”字段必须是数值列"
+            else:
+                error_msg = None
+
+        elif chart_type in ["bar", "line", "scatter"]:
+            if not y_is_num:
+                error_msg = f"{chart_type} 图的“值”字段必须是数值列"
+            else:
+                error_msg = None
+        else:
+            error_msg = "不支持的图表类型"
+
+    # 如果有错误，重新渲染预览页并显示错误
+    if error_msg:
+        data_info = preview_data(df)
+        return render_template(
+            'preview.html',
+            data=data_info,
+            filename=session.get('last_filename', ''),
+            error=error_msg   # 传递错误消息
+        )
+
+    # ========= 数据预处理 =========
+
+    df_plot = df.dropna(subset=[x, y])
+
+    if df_plot.empty:
+        data_info = preview_data(df)
+        return render_template(
+            'preview.html',
+            data=data_info,
+            filename=session.get('last_filename', ''),
+            error="所选列的有效数据为空，请先清洗缺失值"
+        )
+
+    # 柱状图、折线图、饼图自动聚合
+    if chart_type in ['bar', 'line', 'pie']:
+
+        df_plot = (
+            df_plot.groupby(x)[y]
+            .sum()
+            .reset_index()
+            .sort_values(y, ascending=False)
+        )
+
+        # 类别太多只显示前10
+        if len(df_plot) > 10:
+            df_plot = df_plot.head(10)
+
+    # 散点图太多点时抽样
+    elif chart_type == 'scatter':
+
+        if len(df_plot) > 1000:
+            df_plot = df_plot.sample(
+                n=1000,
+                random_state=42
+            )
+
+    # 箱线图保持原始数据
+
+    try:
+        chart_path = create_chart(df_plot, x, y, chart_type)
+        data_info = preview_data(df)
+        return render_template(
+            "preview.html",
+            data=data_info,
+            filename=session.get('last_filename', ''),
+            chart_path=chart_path
+        )
+    except Exception as e:
+        data_info = preview_data(df)
+        return render_template(
+            "preview.html",
+            data=data_info,
+            filename=session.get('last_filename', ''),
+            error=f"绘图失败: {e}"
+        )
 
 if __name__ == '__main__':
     app.run(debug=True)

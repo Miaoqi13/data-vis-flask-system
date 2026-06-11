@@ -80,7 +80,8 @@ def preview_data(df):
         "head": df_show.to_html(classes='table table-bordered table-striped'),
         "rows": df.shape[0],
         "cols": df.shape[1],
-        "columns": list(df.columns)
+        "columns": list(df.columns),
+        "dtypes": {col: str(df[col].dtype) for col in df.columns}
     }
 
 # modules/upload.py (追加函数)
