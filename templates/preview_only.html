@@ -3,15 +3,13 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>数据分析平台</title>
-
+    <title>数据浏览 - 数据分析平台</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
 
 <body>
 
-<!-- 顶栏 -->
 <div class="topbar">
     📊 数据分析平台
     <div class="ms-auto d-flex align-items-center gap-3">
@@ -21,8 +19,8 @@
     </div>
 </div>
 
-<!-- 左侧导航 -->
 <div class="sidebar">
+    <div><a href="/upload_new" class="text-decoration-none">🔄 更换文件</a></div>
     <div><a href="/main" class="text-decoration-none">📁 数据预览</a></div>
     <div><a href="/preview" class="text-decoration-none">🧹 数据清洗</a></div>
     {% if session.get('cleaned') %}
@@ -37,62 +35,15 @@
     <div><a href="/logout" class="text-decoration-none">🚪 退出登录</a></div>
 </div>
 
-<!-- 主内容 -->
 <div class="content">
+    <h3 class="mb-4">数据清洗</h3>
 
-    <h3 class="mb-4">数据概览</h3>
+    {% if message %}
+    <div class="alert alert-success">{{ message }}</div>
+    {% endif %}
 
-    <!-- 统计 -->
-    <div class="row">
-
-        <div class="col-md-6">
-            <div class="card">
-                <div>总行数</div>
-                <div class="stat">{{ data.rows }}</div>
-            </div>
-        </div>
-
-        <div class="col-md-6">
-            <div class="card">
-                <div>总列数</div>
-                <div class="stat">{{ data.cols }}</div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- 字段 -->
     <div class="card">
-        <h5>字段列表</h5>
-        <table class="table table-sm table-bordered">
-            <thead class="table-light">
-            <tr>
-                <th>字段名</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for col in data.columns %}
-            <tr>
-                <td>{{ col }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    </div>
-
-    <!-- 表格 -->
-    <div class="card">
-        <h5>数据预览</h5>
-        {{ data.head | safe }}
-    </div>
-
-    <!-- 数据清洗表单 -->
-    <div class="card">
-        <h5>数据清洗</h5>
-        {% if message %}
-        <div class="alert alert-success">{{ message }}</div>
-        {% endif %}
-
+        <h5>数据清洗设置</h5>
         <form method="post" action="/clean">
             <div class="row mb-2">
                 <div class="col-md-4">
@@ -153,70 +104,6 @@
         </form>
     </div>
 
-    <!-- 数据可视化 -->
-    <div class="card">
-        <h5>数据可视化</h5>
-
-        {% if error %}
-        <div class="alert alert-warning alert-dismissible fade show" role="alert">
-            {{ error }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-        {% endif %}
-
-        <form method="post" action="/visualize">
-            <div class="row">
-                <div class="col-md-4">
-                    <label class="form-label">X轴字段</label>
-                    <select class="form-select" name="x">
-                        {% for col in data.columns %}
-                        <option value="{{ col }}">{{ col }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Y轴字段</label>
-                    <select class="form-select" name="y">
-                        {% for col in data.columns %}
-                        <option value="{{ col }}">{{ col }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">图表类型</label>
-                    <select class="form-select" name="chart_type">
-                        <option value="bar">柱状图</option>
-                        <option value="line">折线图</option>
-                        <option value="pie">饼图</option>
-                        <option value="scatter">散点图</option>
-                        <option value="box">箱线图</option>
-                    </select>
-                </div>
-            </div>
-            <div class="text-end mt-3">
-                <button class="btn btn-primary">生成图表</button>
-            </div>
-        </form>
-    </div>
-    {% if chart_path %}
-
-    <div class="card">
-
-        <h5>图表结果</h5>
-
-        <div class="text-center">
-
-            <img
-                src="{{ url_for('static', filename=chart_path) }}"
-                class="img-fluid"
-                alt="生成的图表">
-
-        </div>
-
-    </div>
-
-    {% endif %}
-    <!-- 下载 -->
     <div class="card text-center">
         <div class="d-inline-flex gap-2">
             <a class="btn btn-success" style="min-width: 180px;" href="/download/{{ filename }}">
@@ -227,16 +114,10 @@
                 下载清洗后的文件
             </a>
             {% endif %}
-            <a class="btn btn-warning" style="min-width: 180px;"
-               href="/export">
-                导出Excel
-            </a>
         </div>
     </div>
-
 </div>
 
-<!-- 清洗报告（若有） -->
 {% if missing_summary_html %}
 <div class="content">
     <div class="card">
@@ -247,8 +128,6 @@
             {{ missing_summary_html | safe }}
         </div>
         {% endif %}
-
-        {# 异常值检测部分已移除 #}
     </div>
 </div>
 {% endif %}

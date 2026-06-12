@@ -3,7 +3,10 @@ from flask import (
     render_template,
     request,
     send_file,
-    session
+    session,
+    redirect,
+    url_for,
+    flash
 )
 
 from modules.upload import (
@@ -12,7 +15,8 @@ from modules.upload import (
     preview_data,
     set_current_dataframe,
     get_current_dataframe,
-    load_dataset_by_id
+    load_dataset_by_id,
+    clear_current_dataframe
 )
 from modules import clean as clean_module
 from modules import analyze as analyze_module
@@ -20,22 +24,131 @@ from modules.visualize import create_chart
 import numpy as np
 import pandas as pd
 from modules.database import init_db, save_dataset_record, get_all_datasets
+from modules.export import export_data
+from modules.auth import (
+    init_user_table,
+    create_user,
+    authenticate_user,
+    login_required,
+    login_user,
+    logout_user,
+    get_user_by_id
+)
+
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here-change-in-production'
-# 上传文件目录
+app.secret_key = 'data-analysis-platform-secret-key-2024-new'
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400
+
 UPLOAD_FOLDER = 'datasets'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 init_db()
+init_user_table()
 
-# 首页
 @app.route('/')
 def index():
+    if 'user_id' in session:
+        return redirect(url_for('main'))
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if 'user_id' in session:
+        return redirect(url_for('main'))
+    
+    error = None
+    success = None
+    
+    # 检查是否从注册页跳转过来
+    if request.args.get('registered') == '1':
+        success = "注册成功！请登录"
+    
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if not username or not password:
+            error = "请输入用户名和密码"
+        else:
+            user_id, err = authenticate_user(username, password)
+            if err:
+                error = err
+            else:
+                # 清空之前用户的数据
+                clear_current_dataframe()
+                login_user(user_id, username)
+                next_page = request.args.get('next')
+                return redirect(next_page or url_for('main'))
+    
+    return render_template('login.html', error=error, success=success)
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if 'user_id' in session:
+        return redirect(url_for('main'))
+    
+    error = None
+    success = None
+    
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
+        password_confirm = request.form.get('password_confirm', '')
+        
+        if not username or not password:
+            error = "用户名和密码不能为空"
+        elif len(password) < 6:
+            error = "密码长度至少6位"
+        elif password != password_confirm:
+            error = "两次输入的密码不一致"
+        else:
+            user_id, err = create_user(username, password, email if email else None)
+            if err:
+                error = err
+            else:
+                success = "注册成功！请登录"
+                return redirect(url_for('login', registered='1'))
+    
+    return render_template('register.html', error=error, success=success, username=request.form.get('username'), email=request.form.get('email'))
+
+@app.route('/logout')
+def logout():
+    # 清空当前用户的数据
+    clear_current_dataframe()
+    logout_user()
+    return redirect(url_for('login'))
+
+@app.route('/upload_new')
+@login_required
+def upload_new():
+    """更换文件：清空当前数据，跳转到上传页面"""
+    clear_current_dataframe()
+    session['cleaned'] = False
     return render_template('index.html')
+
+@app.route('/main')
+@login_required
+def main():
+    df = get_current_dataframe()
+    if df is None:
+        return render_template('index.html')
+    data_info = preview_data(df)
+    return render_template('main.html', data=data_info, filename=session.get('last_filename', ''))
+
+@app.route('/preview')
+@login_required
+def preview():
+    df = get_current_dataframe()
+    if df is None:
+        return render_template('index.html')
+    data_info = preview_data(df)
+    return render_template('preview_only.html', data=data_info, filename=session.get('last_filename', ''))
 
 
 # 上传文件
 @app.route('/upload', methods=['POST'])
+@login_required
 def upload():
 
     file = request.files.get('file')
@@ -52,42 +165,45 @@ def upload():
         return f"文件解析失败: {e}", 400
 
     set_current_dataframe(df, filepath)
-    # 记录当前文件名到 session 以便后续操作使用
     session['last_filename'] = file.filename
-    # 数据预览
+    session['cleaned'] = False
     data_info = preview_data(df)
 
-    session_id = session.get('user_id', 'default')
-    save_dataset_record(file.filename, filepath, df.shape[0], df.shape[1], session_id)
+    user_id = session.get('user_id')
+    save_dataset_record(file.filename, filepath, df.shape[0], df.shape[1], user_id=user_id)
 
-    return render_template('preview.html', data=data_info, filename=file.filename)
+    return render_template('main.html', data=data_info, filename=file.filename)
 
 # 下载文件
 @app.route('/download/<filename>')
+@login_required
 def download(filename):
     filepath = f'datasets/{filename}'
     return send_file(filepath,as_attachment=True)
 
 @app.route('/history')
+@login_required
 def history():
-    session_id = session.get('user_id', 'default')
-    datasets = get_all_datasets(session_id)
+    user_id = session.get('user_id')
+    datasets = get_all_datasets(user_id=user_id)
     return render_template('history.html', datasets=datasets)
 
 @app.route('/load_history/<int:dataset_id>')
+@login_required
 def load_history(dataset_id):
     df, msg = load_dataset_by_id(dataset_id)
     if df is None:
         return msg, 404
     data_info = preview_data(df)
-    # 获取原始文件名（从数据库记录中获取，简化处理：直接调用 get_dataset_by_id）
     from modules.database import get_dataset_by_id
     record = get_dataset_by_id(dataset_id)
     filename = record['filename'] if record else 'history_data'
-    return render_template('preview.html', data=data_info, filename=filename)
+    session['cleaned'] = False
+    return render_template('main.html', data=data_info, filename=filename)
 
 
 @app.route('/clean', methods=['POST'])
+@login_required
 def clean_data_route():
     df = get_current_dataframe()
     if df is None:
@@ -150,9 +266,9 @@ def clean_data_route():
     from modules.upload import update_current_dataframe
     update_current_dataframe(cleaned_df, save_to_file=False)
 
+    session['cleaned'] = True
     data_info = preview_data(cleaned_df)
     message = '数据清洗完成（已生成清洗文件）'
-    # 将缺失统计转为 HTML 字符串，避免在模板中对 DataFrame 做布尔判断
     missing_html = None
     try:
         missing_html = res['missing_summary'].to_html(classes='table table-sm table-bordered')
@@ -160,7 +276,7 @@ def clean_data_route():
         missing_html = None
 
     return render_template(
-        'preview.html',
+        'preview_only.html',
         data=data_info,
         filename=original_filename or '',
         message=message,
@@ -169,7 +285,19 @@ def clean_data_route():
     )
 
 @app.route('/visualize', methods=['POST'])
+@login_required
 def visualize():
+    if not session.get('cleaned'):
+        df = get_current_dataframe()
+        if df is None:
+            return "当前无数据", 400
+        data_info = preview_data(df)
+        return render_template(
+            'visualization.html',
+            data=data_info,
+            error="请先完成数据清洗后再进行可视化操作"
+        )
+    
     df = get_current_dataframe()
     if df is None:
         return "当前无数据", 400
@@ -178,7 +306,6 @@ def visualize():
     y = request.form.get("y")
     chart_type = request.form.get("chart_type")
 
-    # ---------- 数据校验 ----------
     if x not in df.columns or y not in df.columns:
         error_msg = "选择的字段不存在"
     else:
@@ -187,35 +314,97 @@ def visualize():
 
         if chart_type == "pie":
             if not y_is_num:
-                error_msg = "饼图的“值”字段必须是数值列（例如销售额、数量）"
+                error_msg = "饼图的'值'字段必须是数值列（例如销售额、数量）"
             elif df[x].nunique() > 50:
-                error_msg = "饼图的分类过多（超过50类），请选择类别较少的字段作为“名称”"
+                error_msg = "饼图的分类过多（超过50类），请选择类别较少的字段作为'名称'"
             else:
                 error_msg = None
 
         elif chart_type == "box":
             if not y_is_num:
-                error_msg = "箱线图的“值”字段必须是数值列"
+                error_msg = "箱线图的'值'字段必须是数值列"
             else:
                 error_msg = None
 
         elif chart_type in ["bar", "line", "scatter"]:
             if not y_is_num:
-                error_msg = f"{chart_type} 图的“值”字段必须是数值列"
+                error_msg = f"{chart_type} 图的'值'字段必须是数值列"
             else:
                 error_msg = None
         else:
             error_msg = "不支持的图表类型"
 
-    # 如果有错误，重新渲染预览页并显示错误
     if error_msg:
         data_info = preview_data(df)
         return render_template(
-            'preview.html',
+            'visualization.html',
             data=data_info,
-            filename=session.get('last_filename', ''),
-            error=error_msg   # 传递错误消息
+            error=error_msg
         )
+
+    df_plot = df.dropna(subset=[x, y])
+
+    if df_plot.empty:
+        data_info = preview_data(df)
+        return render_template(
+            'visualization.html',
+            data=data_info,
+            error="所选列的有效数据为空，请先清洗缺失值"
+        )
+
+    if chart_type in ['bar', 'line', 'pie']:
+
+        if x == y:
+            return render_template(
+                'visualization.html',
+                data=preview_data(df),
+                error='X轴和Y轴不能选择同一列'
+            )
+
+        df_plot = (
+            df_plot.groupby(x, as_index=False)[y]
+            .sum()
+            .sort_values(y, ascending=False)
+        )
+
+        if len(df_plot) > 10:
+            df_plot = df_plot.head(10)
+
+    elif chart_type == 'scatter':
+
+        if len(df_plot) > 1000:
+            df_plot = df_plot.sample(
+                n=1000,
+                random_state=42
+            )
+
+    try:
+        chart_path = create_chart(df_plot, x, y, chart_type)
+        data_info = preview_data(df)
+        return render_template(
+            "visualization.html",
+            data=data_info,
+            chart_path=chart_path
+        )
+    except Exception as e:
+        data_info = preview_data(df)
+        return render_template(
+            "visualization.html",
+            data=data_info,
+            error=f"绘图失败: {e}"
+        )
+
+@app.route('/visualization')
+@login_required
+def visualization():
+    if not session.get('cleaned'):
+        return "请先进行数据清洗", 400
+    
+    df = get_current_dataframe()
+    if df is None:
+        return "当前无加载数据", 400
+    data_info = preview_data(df)
+    return render_template('visualization.html', data=data_info)
 
     # ========= 数据预处理 =========
 
@@ -233,10 +422,17 @@ def visualize():
     # 柱状图、折线图、饼图自动聚合
     if chart_type in ['bar', 'line', 'pie']:
 
+        if x == y:
+            return render_template(
+                'preview.html',
+                data=preview_data(df),
+                filename=session.get('last_filename', ''),
+                error='X轴和Y轴不能选择同一列'
+            )
+
         df_plot = (
-            df_plot.groupby(x)[y]
+            df_plot.groupby(x, as_index=False)[y]
             .sum()
-            .reset_index()
             .sort_values(y, ascending=False)
         )
 
@@ -272,10 +468,28 @@ def visualize():
             filename=session.get('last_filename', ''),
             error=f"绘图失败: {e}"
         )
+@app.route('/export')
+@login_required
+def export_route():
 
+    df = get_current_dataframe()
+
+    if df is None:
+        return "当前无数据", 400
+
+    file_path = export_data(df)
+
+    return send_file(
+        file_path,
+        as_attachment=True
+    )
 
 @app.route('/analyze', methods=['GET', 'POST'])
+@login_required
 def analyze_route():
+    if not session.get('cleaned'):
+        return "请先进行数据清洗", 400
+    
     df = get_current_dataframe()
     # Allow viewing the analyze page even if no data is loaded (GET);
     # require data only for POST analysis execution.
@@ -379,4 +593,8 @@ def analyze_route():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    print("=" * 50)
+    print("数据分析平台启动中...")
+    print("访问地址: http://127.0.0.1:5000")
+    print("=" * 50)
+    app.run(debug=True, host='127.0.0.1', port=5000)

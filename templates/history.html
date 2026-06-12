@@ -4,17 +4,54 @@
     <meta charset="UTF-8">
     <title>历史数据集 - 数据分析平台</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background: #f4f6fb; }
-        .container-box { max-width: 1000px; margin: 40px auto; }
-        .card { border-radius: 14px; }
-    </style>
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
 <body>
-<div class="container-box">
-    <div class="card p-4">
-        <h2 class="mb-3">📚 历史数据集</h2>
-        <table class="table table-hover">
+
+<div class="topbar">
+    📊 数据分析平台
+    <div class="ms-auto d-flex align-items-center gap-3">
+        <span class="text-muted" style="font-size: 14px;">👤 {{ session.username }}</span>
+        <a href="/history" class="btn btn-sm btn-outline-secondary">历史记录</a>
+        <a href="/logout" class="btn btn-sm btn-outline-secondary">退出登录</a>
+    </div>
+</div>
+
+<div class="sidebar">
+    <div><a href="/upload_new" class="text-decoration-none">🔄 更换文件</a></div>
+    <div><a href="/main" class="text-decoration-none">📁 数据预览</a></div>
+    <div><a href="/preview" class="text-decoration-none">🧹 数据清洗</a></div>
+    {% if session.get('cleaned') %}
+    <div><a href="/analyze" class="text-decoration-none">📊 数据分析</a></div>
+    <div><a href="/visualization" class="text-decoration-none">📈 可视化</a></div>
+    {% else %}
+    <div class="disabled" title="请先完成数据清洗">📊 数据分析</div>
+    <div class="disabled" title="请先完成数据清洗">📈 可视化</div>
+    {% endif %}
+    <div><a href="/export" class="text-decoration-none">⬇ 导出数据</a></div>
+    <hr style="margin: 20px 0; border-color: #e5e7eb;">
+    <div><a href="/logout" class="text-decoration-none">🚪 退出登录</a></div>
+</div>
+
+<div class="content">
+    <h3 class="mb-4">📚 历史数据集</h3>
+    
+    <div class="card mb-3">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <span class="input-group-text">🔍</span>
+                    <input type="text" id="searchInput" class="form-control" placeholder="输入文件名搜索..." onkeyup="filterTable()">
+                </div>
+            </div>
+            <div class="col-md-6 text-end">
+                <small class="text-muted">共 <span id="totalCount">{{ datasets|length }}</span> 条记录，显示 <span id="filteredCount">{{ datasets|length }}</span> 条</small>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <table class="table table-hover" id="historyTable">
             <thead class="table-light">
                 <tr><th>ID</th><th>文件名</th><th>上传时间</th><th>行数</th><th>列数</th><th>操作</th></tr>
             </thead>
@@ -33,8 +70,46 @@
                 {% endfor %}
             </tbody>
         </table>
-        <a href="/" class="btn btn-secondary mt-3">返回上传首页</a>
     </div>
 </div>
+
+<script>
+function filterTable() {
+    const input = document.getElementById('searchInput');
+    const filter = input.value.toLowerCase();
+    const table = document.getElementById('historyTable');
+    const rows = table.getElementsByTagName('tr');
+    
+    let visibleCount = 0;
+    
+    // 从第1行开始（跳过表头）
+    for (let i = 1; i < rows.length; i++) {
+        const cells = rows[i].getElementsByTagName('td');
+        
+        if (cells.length > 0) {
+            // 获取文件名（第2列，索引为1）
+            const filename = cells[1].textContent || cells[1].innerText;
+            
+            if (filename.toLowerCase().indexOf(filter) > -1) {
+                rows[i].style.display = '';
+                visibleCount++;
+            } else {
+                rows[i].style.display = 'none';
+            }
+        }
+    }
+    
+    // 更新显示计数
+    document.getElementById('filteredCount').textContent = visibleCount;
+}
+
+// 页面加载时初始化计数
+document.addEventListener('DOMContentLoaded', function() {
+    const total = {{ datasets|length }};
+    document.getElementById('totalCount').textContent = total;
+    document.getElementById('filteredCount').textContent = total;
+});
+</script>
+
 </body>
 </html>

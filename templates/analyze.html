@@ -1,184 +1,210 @@
 <!doctype html>
-<html lang="zh-cn">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <title>数据分析</title>
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
-<body class="p-4">
-<div class="container">
-  <h1>数据分析</h1>
-  <form method="post" class="row g-3">
-    <div class="col-md-3">
-      <label class="form-label">分析模式</label>
-      <select name="mode" class="form-select">
-        <option value="auto">Auto (聚类+降维+若提供目标则分类/回归)</option>
-        <option value="clustering">聚类</option>
-        <option value="dim_reduction">降维</option>
-        <option value="classification">分类</option>
-        <option value="regression">回归</option>
-      </select>
-    </div>
+<body>
 
-    <div class="col-md-4">
-      <label class="form-label">特征列（可多选）</label>
-      <select name="features" multiple class="form-select" size="6">
-        {% for c in numeric_cols %}
-        <option value="{{c}}">{{c}}</option>
-        {% endfor %}
-      </select>
-      <div class="form-text">只显示数值列；不选则使用所有数值列。</div>
-    </div>
+<div class="topbar">
+  📊 数据分析平台
+  <div class="ms-auto d-flex align-items-center gap-3">
+      <span class="text-muted" style="font-size: 14px;">👤 {{ session.username }}</span>
+      <a href="/history" class="btn btn-sm btn-outline-secondary">历史记录</a>
+      <a href="/logout" class="btn btn-sm btn-outline-secondary">退出登录</a>
+  </div>
+</div>
 
-    <div class="col-md-3">
-      <label class="form-label">目标列（用于分类/回归）</label>
-      <select name="target" class="form-select">
-        <option value="">（无）</option>
-        {% for c in all_cols %}
-        <option value="{{c}}">{{c}}</option>
-        {% endfor %}
-      </select>
-    </div>
+<div class="sidebar">
+  <div><a href="/main" class="text-decoration-none">📁 数据预览</a></div>
+  <div><a href="/preview" class="text-decoration-none">🧹 数据清洗</a></div>
+  {% if session.get('cleaned') %}
+  <div><a href="/analyze" class="text-decoration-none">📊 数据分析</a></div>
+  <div><a href="/visualization" class="text-decoration-none">📈 可视化</a></div>
+  {% else %}
+  <div class="disabled" title="请先完成数据清洗">📊 数据分析</div>
+  <div class="disabled" title="请先完成数据清洗">📈 可视化</div>
+  {% endif %}
+  <div><a href="/export" class="text-decoration-none">⬇ 导出数据</a></div>
+  <hr style="margin: 20px 0; border-color: #e5e7eb;">
+  <div><a href="/logout" class="text-decoration-none">🚪 退出登录</a></div>
+</div>
 
-    <div class="col-md-2">
-      <label class="form-label">K 范围</label>
-      <div class="input-group">
-        <input type="number" name="kmin" class="form-control" placeholder="min">
-        <input type="number" name="kmax" class="form-control" placeholder="max">
+<div class="content">
+  <h3 class="mb-4">数据分析</h3>
+
+  <div class="card">
+    <form method="post" class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">分析模式</label>
+        <select name="mode" class="form-select">
+          <option value="auto">Auto (聚类+降维+若提供目标则分类/回归)</option>
+          <option value="clustering">聚类</option>
+          <option value="dim_reduction">降维</option>
+          <option value="classification">分类</option>
+          <option value="regression">回归</option>
+        </select>
       </div>
-      <div class="form-text">仅用于 KMeans 比较</div>
-    </div>
 
-    <div class="col-12">
-      <button class="btn btn-primary" type="submit">运行分析</button>
-      <a class="btn btn-secondary" href="/">返回主页</a>
-    </div>
-  </form>
+      <div class="col-md-4">
+        <label class="form-label">特征列（可多选）</label>
+        <select name="features" multiple class="form-select" size="6">
+          {% for c in numeric_cols %}
+          <option value="{{c}}">{{c}}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">只显示数值列；不选则使用所有数值列。</div>
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">目标列（用于分类/回归）</label>
+        <select name="target" class="form-select">
+          <option value="">（无）</option>
+          {% for c in all_cols %}
+          <option value="{{c}}">{{c}}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-2">
+        <label class="form-label">K 范围</label>
+        <div class="input-group">
+          <input type="number" name="kmin" class="form-control" placeholder="min">
+          <input type="number" name="kmax" class="form-control" placeholder="max">
+        </div>
+        <div class="form-text">仅用于 KMeans 比较</div>
+      </div>
+
+      <div class="col-12">
+        <button class="btn btn-primary" type="submit">运行分析</button>
+      </div>
+    </form>
+  </div>
 
   {% if error %}
-  <div class="mt-3 alert alert-warning">{{ error }}</div>
+  <div class="alert alert-warning">{{ error }}</div>
   {% endif %}
 
   {% if result %}
-  <hr>
-  <h2>分析结果（模式：{{mode}}）</h2>
+  <div class="card">
+    <h5>分析结果（模式：{{mode}}）</h5>
 
-  {% for key, val in result.items() %}
-    <h3 class="mt-3">{{key}}</h3>
-    {% if val.summary %}
-    <div class="alert alert-info">{{ val.summary }}</div>
-    {% endif %}
-    {# 聚类：展示 kmeans/dbscan/agglo 的表格 #}
-    {% if key == 'clustering' %}
-      <div class="table-responsive">
-        {% if val.kmeans %}
-          <h5>KMeans 指标</h5>
-          <table class="table table-sm table-bordered">
-            <thead class="table-light"><tr><th>k</th><th>silhouette</th><th>davies_bouldin</th></tr></thead>
-            <tbody>
-              {% for k, m in val.kmeans.items() %}
-              <tr>
-                <td>{{ k }}</td>
-                <td>{{ '%.3f'|format(m.silhouette) if m.silhouette is not none else 'N/A' }}</td>
-                <td>{{ '%.3f'|format(m.davies_bouldin) if m.davies_bouldin is not none else 'N/A' }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% endif %}
-
-        {% if val.dbscan %}
-          <h5>DBSCAN 指标</h5>
-          <table class="table table-sm table-bordered">
-            <thead class="table-light"><tr><th>eps</th><th>n_clusters</th><th>silhouette</th></tr></thead>
-            <tbody>
-              {% for eps, m in val.dbscan.items() %}
-              <tr>
-                <td>{{ eps }}</td>
-                <td>{{ m.n_clusters }}</td>
-                <td>{{ '%.3f'|format(m.silhouette) if m.silhouette is not none else 'N/A' }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% endif %}
-
-        {% if val.agglo %}
-          <h5>Agglomerative 指标</h5>
-          <table class="table table-sm table-bordered">
-            <thead class="table-light"><tr><th>k</th><th>silhouette</th><th>davies_bouldin</th><th>calinski_harabasz</th></tr></thead>
-            <tbody>
-              {% for k, m in val.agglo.items() %}
-              <tr>
-                <td>{{ k }}</td>
-                <td>{{ '%.3f'|format(m.silhouette) if m.silhouette is not none else 'N/A' }}</td>
-                <td>{{ '%.3f'|format(m.davies_bouldin) if m.davies_bouldin is not none else 'N/A' }}</td>
-                <td>{{ '%.3f'|format(m.calinski_harabasz) if m.calinski_harabasz is not none else 'N/A' }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% endif %}
-      </div>
-
-    {% elif val.comparison_table %}
-      {# 通用模型对比表格（classification/regression） #}
-      <div class="table-responsive">
-        {% set tbl = val.comparison_table %}
-        {% if tbl and tbl|length > 0 %}
-          <table class="table table-sm table-bordered">
-            <thead class="table-light"><tr>
-              {% for h, v in tbl[0].items() %}
-                <th>{{ h.replace('_',' ').title() }}</th>
-              {% endfor %}
-            </tr></thead>
-            <tbody>
-              {% for row in tbl %}
-              <tr>
-                {% for h, v in row.items() %}
-                <td>{{ '%.3f'|format(v) if v is number else (v if v is not none else 'N/A') }}</td>
+    {% for key, val in result.items() %}
+      <h6 class="mt-3">{{key}}</h6>
+      {% if val.summary %}
+      <div class="alert alert-info">{{ val.summary }}</div>
+      {% endif %}
+      {% if key == 'clustering' %}
+        <div class="table-responsive">
+          {% if val.kmeans %}
+            <h6>KMeans 指标</h6>
+            <table class="table table-sm table-bordered">
+              <thead class="table-light"><tr><th>k</th><th>silhouette</th><th>davies_bouldin</th></tr></thead>
+              <tbody>
+                {% for k, m in val.kmeans.items() %}
+                <tr>
+                  <td>{{ k }}</td>
+                  <td>{{ '%.3f'|format(m.silhouette) if m.silhouette is not none else 'N/A' }}</td>
+                  <td>{{ '%.3f'|format(m.davies_bouldin) if m.davies_bouldin is not none else 'N/A' }}</td>
+                </tr>
                 {% endfor %}
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <pre style="white-space:pre-wrap;background:#f8f9fa;padding:10px;border-radius:4px;">{{ val }}</pre>
-        {% endif %}
-      </div>
+              </tbody>
+            </table>
+          {% endif %}
 
-    {% elif key == 'comparison_table' %}
-      <div class="table-responsive">
-        {% set tbl = val %}
-        {% if tbl and tbl|length > 0 %}
-          <table class="table table-sm table-bordered">
-            <thead class="table-light"><tr>
-              {% for h, v in tbl[0].items() %}
-                <th>{{ h.replace('_',' ').title() }}</th>
-              {% endfor %}
-            </tr></thead>
-            <tbody>
-              {% for row in tbl %}
-              <tr>
-                {% for h, v in row.items() %}
-                <td>{{ '%.3f'|format(v) if v is number else (v if v is not none else 'N/A') }}</td>
+          {% if val.dbscan %}
+            <h6>DBSCAN 指标</h6>
+            <table class="table table-sm table-bordered">
+              <thead class="table-light"><tr><th>eps</th><th>n_clusters</th><th>silhouette</th></tr></thead>
+              <tbody>
+                {% for eps, m in val.dbscan.items() %}
+                <tr>
+                  <td>{{ eps }}</td>
+                  <td>{{ m.n_clusters }}</td>
+                  <td>{{ '%.3f'|format(m.silhouette) if m.silhouette is not none else 'N/A' }}</td>
+                </tr>
                 {% endfor %}
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <pre style="white-space:pre-wrap;background:#f8f9fa;padding:10px;border-radius:4px;">{{ val }}</pre>
-        {% endif %}
-      </div>
+              </tbody>
+            </table>
+          {% endif %}
 
-    {% else %}
-      <pre style="white-space:pre-wrap;background:#f8f9fa;padding:10px;border-radius:4px;">{{ val }}</pre>
-    {% endif %}
-  {% endfor %}
+          {% if val.agglo %}
+            <h6>Agglomerative 指标</h6>
+            <table class="table table-sm table-bordered">
+              <thead class="table-light"><tr><th>k</th><th>silhouette</th><th>davies_bouldin</th><th>calinski_harabasz</th></tr></thead>
+              <tbody>
+                {% for k, m in val.agglo.items() %}
+                <tr>
+                  <td>{{ k }}</td>
+                  <td>{{ '%.3f'|format(m.silhouette) if m.silhouette is not none else 'N/A' }}</td>
+                  <td>{{ '%.3f'|format(m.davies_bouldin) if m.davies_bouldin is not none else 'N/A' }}</td>
+                  <td>{{ '%.3f'|format(m.calinski_harabasz) if m.calinski_harabasz is not none else 'N/A' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% endif %}
+        </div>
+
+      {% elif val.comparison_table %}
+        <div class="table-responsive">
+          {% set tbl = val.comparison_table %}
+          {% if tbl and tbl|length > 0 %}
+            <table class="table table-sm table-bordered">
+              <thead class="table-light"><tr>
+                {% for h, v in tbl[0].items() %}
+                  <th>{{ h.replace('_',' ').title() }}</th>
+                {% endfor %}
+              </tr></thead>
+              <tbody>
+                {% for row in tbl %}
+                <tr>
+                  {% for h, v in row.items() %}
+                  <td>{{ '%.3f'|format(v) if v is number else (v if v is not none else 'N/A') }}</td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <pre style="white-space:pre-wrap;background:#f8f9fa;padding:10px;border-radius:4px;">{{ val }}</pre>
+          {% endif %}
+        </div>
+
+      {% elif key == 'comparison_table' %}
+        <div class="table-responsive">
+          {% set tbl = val %}
+          {% if tbl and tbl|length > 0 %}
+            <table class="table table-sm table-bordered">
+              <thead class="table-light"><tr>
+                {% for h, v in tbl[0].items() %}
+                  <th>{{ h.replace('_',' ').title() }}</th>
+                {% endfor %}
+              </tr></thead>
+              <tbody>
+                {% for row in tbl %}
+                <tr>
+                  {% for h, v in row.items() %}
+                  <td>{{ '%.3f'|format(v) if v is number else (v if v is not none else 'N/A') }}</td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <pre style="white-space:pre-wrap;background:#f8f9fa;padding:10px;border-radius:4px;">{{ val }}</pre>
+          {% endif %}
+        </div>
+
+      {% else %}
+        <pre style="white-space:pre-wrap;background:#f8f9fa;padding:10px;border-radius:4px;">{{ val }}</pre>
+      {% endif %}
+    {% endfor %}
+  </div>
   {% endif %}
-
 </div>
+
 </body>
 </html>

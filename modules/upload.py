@@ -6,6 +6,12 @@ import os
 _current_df = None
 _current_filepath = None
 
+def clear_current_dataframe():
+    """清空当前数据（用于切换用户时）"""
+    global _current_df, _current_filepath
+    _current_df = None
+    _current_filepath = None
+
 def set_current_dataframe(df, filepath=None):
     global _current_df, _current_filepath
     _current_df = df.copy()
